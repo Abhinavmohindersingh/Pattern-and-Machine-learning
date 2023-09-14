@@ -1,129 +1,129 @@
-import imageio.v2 as imageio
 import os
-import numpy as np
-import tensorflow as tf
-
-from cifar import outputs
-
-model = tf.keras.models.Model(...)
-
-import tensorflow as tf
-from tensorflow.keras.layers import Input, Dense, Conv2D, MaxPooling2D, UpSampling2D, Flatten, Reshape, Lambda
-from tensorflow.keras.models import Model
-from tensorflow.keras.losses import mse
-from tensorflow.keras import backend as K
-
-IMG_SHAPE = (256, 256, 1)
-
-# Directories
-# Example using absolute paths
-base_path = '/Users/abhinavsingh/Downloads/keras_png_slices_data'  # Replace 'path_to_datasets_folder' with the appropriate path
-data_dirs = {
-    "train": os.path.join(base_path, "keras_png_slices_train"),
-    "validate": os.path.join(base_path, "keras_png_slices_validate"),
-    "test": os.path.join(base_path, "keras_png_slices_test"),
-    "seg_train": os.path.join(base_path, "keras_png_slices_seg_train"),
-    "seg_validate": os.path.join(base_path, "keras_png_slices_seg_validate"),
-    "seg_test": os.path.join(base_path, "keras_png_slices_seg_test")
-}
-
-
-datasets = {key: [imageio.imread(os.path.join(dir, img_name)) for img_name in os.listdir(dir)] for key, dir in data_dirs.items()}
-for key in ["train", "validate", "test"]:
-    datasets[key] = [(img - img.min()) / (img.max() - img.min()) for img in datasets[key]]
-for key in datasets.keys():
-    datasets[key] = [img[..., np.newaxis] for img in datasets[key]]
-for key in datasets.keys():
-    datasets[key] = np.array(datasets[key])
-
-latent_dim = 2  # for visualization purpose
-
-inputs = Input(shape=IMG_SHAPE)
-x = Conv2D(32, (3, 3), activation='relu', padding='same')(inputs)
-x = MaxPooling2D((2, 2), padding='same')(x)
-x = Conv2D(64, (3, 3), activation='relu', padding='same')(x)
-x = MaxPooling2D((2, 2), padding='same')(x)
-x = Conv2D(128, (3, 3), activation='relu', padding='same')(x)
-x = MaxPooling2D((2, 2), padding='same')(x)
-x = Flatten()(x)
-x = Dense(1024, activation='relu')(x)
-z_mean = Dense(latent_dim)(x)
-z_log_var = Dense(latent_dim)(x)
-
-
-def sampling(args):
-    z_mean, z_log_var = args
-    batch = K.shape(z_mean)[0]
-    dim = K.int_shape(z_mean)[1]
-    epsilon = K.random_normal(shape=(batch, dim))
-    return z_mean + K.exp(0.5 * z_log_var) * epsilon
-
-
-z = Lambda(sampling, output_shape=(latent_dim,))([z_mean, z_log_var])
-
-encoder = Model(inputs, [z_mean, z_log_var, z])
-
-decoder_input = Input(shape=(latent_dim,))
-x = Dense(1024, activation='relu')(decoder_input)
-x = Dense(32 * 32 * 128, activation='relu')(x)
-x = Reshape((32, 32, 128))(x)
-x = UpSampling2D((2, 2))(x)
-x = Conv2D(64, (3, 3), activation='relu', padding='same')(x)
-x = UpSampling2D((2, 2))(x)
-x = Conv2D(32, (3, 3), activation='relu', padding='same')(x)
-x = UpSampling2D((2, 2))(x)
-decoded = Conv2D(1, (3, 3), activation='sigmoid', padding='same')(x)
-
-decoder = Model(decoder_input, decoded)
-z_decoded = decoder(z)
-
-
-class VAELossLayer(keras.layers.Layer):
-    def __init__(self, **kwargs):
-        self.is_placeholder = True
-        super(VAELossLayer, self).__init__(**kwargs)
-
-    def vae_loss(self, x, x_decoded_mean):
-        xent_loss = original_dim * binary_crossentropy(x, x_decoded_mean)
-        kl_loss = - 0.5 * K.sum(1 + z_log_var - K.square(z_mean) - K.exp(z_log_var), axis=-1)
-        return K.mean(xent_loss + kl_loss)
-
-    def call(self, inputs):
-        x, x_decoded_mean = inputs
-        loss = self.vae_loss(x, x_decoded_mean)
-        self.add_loss(loss, inputs=inputs)
-        return x
-
-
-
-vae = Model(inputs, z_decoded)
-vae.compile(optimizer='adam', loss=vae_loss)
-y = VAELossLayer()([inputs, outputs])
-vae = Model(inputs, y)
-
-vae.fit(datasets['train'], datasets['train'], epochs=50, batch_size=32, shuffle=True)
-
-vae.compile(optimizer='adam', loss=None)  # Loss is already handled in the VAELossLayer
-
-
-
+import torch
+import torch.nn as nn
+from torch.utils.data import DataLoader, Dataset
+from torchvision import transforms
+from PIL import Image
 import matplotlib.pyplot as plt
 
-n = 20  # number of images per axis
-digit_size = IMG_SHAPE[0]
-figure = np.zeros((digit_size * n, digit_size * n))
+# Dataset definition
+class OasisDataset(Dataset):
+    def __init__(self, root_dir, transform=None):
+        self.root_dir = root_dir
+        self.transform = transform
+        self.samples = []
 
-grid_x = np.linspace(-4, 4, n)
-grid_y = np.linspace(-4, 4, n)
+        # Recursively gather all .png images from the subdirectories
+        for dirpath, _, filenames in os.walk(root_dir):
+            for filename in filenames:
+                if filename.endswith('.png'):
+                    self.samples.append(os.path.join(dirpath, filename))
 
-for i, yi in enumerate(grid_x):
-    for j, xi in enumerate(grid_y):
-        z_sample = np.array([[xi, yi]])
-        x_decoded = decoder.predict(z_sample)
-        digit = x_decoded[0].reshape(digit_size, digit_size)
-        figure[i * digit_size: (i + 1) * digit_size,
-               j * digit_size: (j + 1) * digit_size] = digit
+    def __len__(self):
+        return len(self.samples)
 
-plt.figure(figsize=(10, 10))
-plt.imshow(figure, cmap='Greys_r')
-plt.show()
+    def __getitem__(self, idx):
+        img_name = self.samples[idx]
+        image = Image.open(img_name)
+        if self.transform:
+            image = self.transform(image)
+        return image
+
+# Data preparation
+transform = transforms.Compose([
+    transforms.Grayscale(),  # Convert to grayscale
+    transforms.ToTensor(),
+    transforms.Normalize((0.5,), (0.5,))
+])
+
+oasis_data = OasisDataset("/Users/abhinavsingh/Desktop/Pattern-and-Machine-learning", transform)
+data_loader = DataLoader(oasis_data, batch_size=32, shuffle=True)
+
+# VAE model definition
+class VAE(nn.Module):
+    def __init__(self, h_dim, z_dim):
+        super(VAE, self).__init__()
+
+        # Encoder
+        self.fc1 = nn.Linear(256*256, h_dim)
+        self.fc21 = nn.Linear(h_dim, z_dim)
+        self.fc22 = nn.Linear(h_dim, z_dim)
+
+        # Decoder
+        self.fc3 = nn.Linear(z_dim, h_dim)
+        self.fc4 = nn.Linear(h_dim, 256*256)
+
+    def encode(self, x):
+        h = torch.relu(self.fc1(x))
+        return self.fc21(h), self.fc22(h)
+
+    def reparameterize(self, mu, logvar):
+        std = torch.exp(0.5*logvar)
+        eps = torch.randn_like(std)
+        return mu + eps*std
+
+    def decode(self, z):
+        h = torch.relu(self.fc3(z))
+        return torch.clamp(torch.sigmoid(self.fc4(h)), 0, 1)
+
+    def forward(self, x):
+        mu, logvar = self.encode(x.view(-1, 256*256))
+        z = self.reparameterize(mu, logvar)
+        return self.decode(z), mu, logvar
+
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+model = VAE(400, 20).to(device)
+optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
+
+# Loss function
+def loss_function(recon_x, x, mu, logvar):
+    BCE = nn.functional.binary_cross_entropy(recon_x, x.view(-1, 256*256), reduction='sum')
+    KLD = -0.5 * torch.sum(1 + logvar - mu.pow(2) - logvar.exp())
+    return BCE + KLD
+
+
+def visualize_samples(data_loader, model, num_samples=5):
+    model.eval()
+    data_iter = iter(data_loader)
+    data = next(data_iter).to(device)
+
+    with torch.no_grad():
+        recon, _, _ = model(data)
+
+        data = data.cpu().numpy()
+        recon = recon.cpu().numpy()
+
+        fig, axs = plt.subplots(2, num_samples, figsize=(15, 6))
+        for i in range(num_samples):
+            axs[0, i].imshow(data[i].reshape(256, 256), cmap='gray')
+            axs[1, i].imshow(recon[i].reshape(256, 256), cmap='gray')
+            axs[0, i].axis('off')
+            axs[1, i].axis('off')
+
+        axs[0, 0].set_title('Original Images')
+        axs[1, 0].set_title('Reconstructed Images')
+        plt.tight_layout()
+        plt.show()
+
+# Training function
+def train(epoch, epochs):
+    model.train()
+    train_loss = 0
+    for batch_idx, data in enumerate(data_loader):
+        data = data.to(device)
+        optimizer.zero_grad()
+        recon_batch, mu, logvar = model(data)
+        loss = loss_function(recon_batch, data, mu, logvar)
+        loss.backward()
+        train_loss += loss.item()
+        optimizer.step()
+        print('Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}'.format(
+            epoch, batch_idx * len(data), len(data_loader.dataset),
+            100. * batch_idx / len(data_loader), loss.item() / len(data)))
+    print('====> Epoch: {} Average loss: {:.4f}'.format(epoch, train_loss / len(data_loader.dataset)))
+
+epochs = 10
+for epoch in range(1, epochs + 1):
+    train(epoch, epochs)
+    visualize_samples(data_loader, model)  # Visualize after each epoch
+

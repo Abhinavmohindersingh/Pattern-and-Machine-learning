@@ -1,6 +1,14 @@
+import numpy as np
 import tensorflow as tf
 from sklearn.datasets import fetch_lfw_people
 from sklearn.model_selection import train_test_split
+import os
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
+
+# Setting seeds for reproducibility
+np.random.seed(42)
+tf.random.set_seed(42)
+tf.keras.layers.Dropout(0.5)
 
 # Load data
 lfw_people = fetch_lfw_people(min_faces_per_person=70, resize=0.4)
@@ -12,6 +20,7 @@ X_train, X_test, y_train, y_test = train_test_split(X, Y, test_size=0.25, random
 # Normalize and resize for CNN
 X_train = X_train[..., tf.newaxis].astype("float32") / 255.0
 X_test = X_test[..., tf.newaxis].astype("float32") / 255.0
+tf.keras.layers.BatchNormalization()
 
 # Model
 model = tf.keras.Sequential([
@@ -25,7 +34,7 @@ model = tf.keras.Sequential([
     tf.keras.layers.Dense(len(lfw_people.target_names), activation='softmax')
 ])
 
-model.compile(optimizer='adam', loss='sparse_categorical_crossentropy', metrics=['accuracy'])
+model.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=0.001), loss='sparse_categorical_crossentropy', metrics=['accuracy'])
 model.fit(X_train, y_train, epochs=10, batch_size=32, validation_split=0.2)
 
 # Evaluate

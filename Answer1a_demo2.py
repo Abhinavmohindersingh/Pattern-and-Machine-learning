@@ -36,9 +36,11 @@ lfw_people = fetch_lfw_people(min_faces_per_person=70, resize=0.4)
 
 # Get the shape of the images (for plotting later on)
 n_samples, h, w = lfw_people.images.shape
+X = lfw_people.data
+y = lfw_people.target
 
 # Split dataset into training and test set
-X_train, X_test, y_train, y_test = train_test_split(x, y, test_size=0.25, random_state=42)
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.25, random_state=42)
 
 # Convert training and test datasets to tensors
 X_train = tf.convert_to_tensor(X_train, dtype=tf.float32)
@@ -95,4 +97,6 @@ estimator.fit(X_transformed_np, y_train)
 predictions = estimator.predict(X_test_transformed_np)
 
 # Print the classification report
+target_names = lfw_people.target_names
+
 print(classification_report(y_test, predictions, target_names=target_names))

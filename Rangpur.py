@@ -1,4 +1,3 @@
-#normalise
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -13,7 +12,6 @@ num_epochs = 11 #can be modified
 learning_rate = 0.1
 num_classes = 10
 batch_size = 128
-
 
 
 #data
@@ -163,4 +161,3 @@ for i in range(num_epochs): #each epoch we get a batch
 end = time.time()
 elapsed = end-start
 print(elapsed)
-#torch.save(model.state_dict(), path)
